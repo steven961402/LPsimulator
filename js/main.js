@@ -193,7 +193,7 @@ const orient = [
 ];
 orient.forEach(([l, p]) => { l.position.set(...p); patient.add(l); });
 const orientBack = orient[1][0];
-const bedLabel = makeLabel('床面（病人左側朝下）', 'lab-dir');
+const bedLabel = makeLabel('床面（病人左側朝下）', 'lab-dir lab-bed');
 bedLabel.position.set(-7.6, 0, 4);
 scene.add(bedLabel);
 
@@ -309,6 +309,8 @@ patient.add(entryGrab);
 
 // ---------- 狀態 ----------
 let MODE = 'god'; // 'god' 上帝視角 / 'real' 真實視角
+// 手機：點數據框展開／收起（電腦版數據框不接受點擊，永遠全部顯示）
+$('hud').addEventListener('click', () => $('hud').classList.toggle('open'));
 const DEFAULT_Y = Math.round(A.interspaceSkinY(4) * 10) / 10; // 預設入針點：L4–L5 間隙
 const S = { flex: 6, roll: 0, tuff: 0, x: 0, y: DEFAULT_Y, ceph: 12, horiz: 0, depth: 0 };
 
@@ -322,6 +324,7 @@ const crestL = new THREE.Mesh(new THREE.SphereGeometry(0.22, 16, 12), tuffMat);
 const crestR = crestL.clone();
 crestL.position.x = -4.2; crestR.position.x = 4.2;
 const tuffLabel = makeLabel("Tuffier's line（摸到的）", 'lab-tuff');
+tuffLabel.element.innerHTML = "Tuffier<span class=\"lfull\">'s line（摸到的）</span>";
 tuffLabel.position.set(4.6, 0, 0.3);
 tuffier.add(tuffBar, crestL, crestR, tuffLabel);
 patient.add(tuffier);
@@ -424,11 +427,12 @@ function updateHud(dev) {
     <div class="hrow"><span></span><b>${xTxt}</b></div>
     <div class="hrow"><span>往頭側角度</span><b>${S.ceph.toFixed(0)}°</b></div>
     <div class="hrow"><span>水平角度</span><b>${hTxt}</b></div>
-    ${MODE === 'god' ? `<div class="hrow ${devCls}"><span>與正中矢狀面</span><b>${devTxt}</b></div>` : ''}
-    <div class="hrow"><span>深度</span><b>${S.depth.toFixed(1)} cm</b></div>
+    ${MODE === 'god' ? `<div class="hrow key ${devCls}"><span>與正中矢狀面</span><b>${devTxt}</b></div>` : ''}
+    <div class="hrow key"><span>深度</span><b>${S.depth.toFixed(1)} cm</b></div>
     <div class="hsep"></div>
     ${MODE === 'god' ? `<div class="hrow"><span>實際位置</span><b>${actual}</b></div>` : ''}
-    <div class="hrow ${MODE === 'god' && mismatch ? 'warn' : ''}"><span>${MODE === 'god' ? "依 Tuffier's line 推算" : '你以為的位置'}</span><b>${believed}</b></div>`;
+    <div class="hrow key ${MODE === 'god' && mismatch ? 'warn' : ''}"><span>${MODE === 'god' ? "依 Tuffier's line 推算" : '你以為的位置'}</span><b>${believed}</b></div>
+    <div class="hmore"></div>`;
 }
 
 function updateNeedle() {
