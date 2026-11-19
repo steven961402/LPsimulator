@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lumbar Puncture 互動教學</title>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<style>
+  :root{
+    --bg:#f4f6f8; --panel:#ffffff; --ink:#1c2430; --muted:#5f6b7a; --line:#dde3ea;
+    --accent:#1f6f8b; --accent-soft:#e3f0f5; --warn:#a4452c; --warn-soft:#fbeee9;
+    --ok:#2f7a4f; --stage:#0f1b26;
+    --radius:14px;
+    --font: "Noto Sans TC", -apple-system, "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font-family:var(--font);color:var(--ink);background:var(--bg);line-height:1.65;font-size:16px;overflow:hidden}
+
+  /* ---------- layout ---------- */
+  .app{display:grid;height:100vh;height:100dvh;grid-template-rows:auto 1fr}
+  header{display:flex;align-items:center;gap:10px;padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--line);z-index:5}
+  header h1{font-size:17px;margin:0;font-weight:700;letter-spacing:.02em}
+  header .tag{font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:1px 8px}
+  .main{position:relative;display:grid;grid-template-columns:1fr;min-height:0}
+
+  /* 3D stage */
+  .stage{position:relative;background:#f4f6f9;min-height:0;overflow:hidden}
+  #stage-3d{position:absolute;left:0;right:0;top:0;bottom:var(--sheet,0px);transition:bottom .25s ease}
+
+  /* panel */
+  .panel{background:var(--panel);display:flex;flex-direction:column;min-height:0}
+  .tabs{display:flex;gap:6px;overflow-x:auto;padding:10px 12px;border-bottom:1px solid var(--line);scrollbar-width:none;flex-shrink:0}
+  .tabs::-webkit-scrollbar{display:none}
+  .tab{flex-shrink:0;border:1px solid var(--line);background:#fff;color:var(--ink);font:inherit;font-size:14px;padding:6px 12px;border-radius:999px;cursor:pointer;white-space:nowrap}
+  .tab .n{color:var(--muted);margin-right:4px;font-variant-numeric:tabular-nums}
+  .tab[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+  .tab[aria-selected="true"] .n{color:#cfe6ee}
+  .content{overflow-y:auto;padding:4px 20px 40px;min-height:0;flex:1;-webkit-overflow-scrolling:touch}
+  section.ch{display:none}
+  section.ch.active{display:block}
+  .ch h2{font-size:21px;margin:18px 0 4px}
+  .ch .sub{color:var(--muted);font-size:14px;margin:0 0 12px}
+  .ch h3{font-size:16px;margin:22px 0 6px;color:var(--accent)}
+  .ch ul,.ch ol{padding-left:22px;margin:6px 0}
+  .ch li{margin:3px 0}
+  .en{color:var(--muted);font-size:.92em}
+  .box{border-radius:10px;padding:10px 14px;margin:12px 0;font-size:15px}
+  .box.key{background:var(--accent-soft)}
+  .box.warn{background:var(--warn-soft);color:#5a2617}
+  .box.todo{background:#fff8e1;border:1px dashed #d9b44a;color:#6b5310}
+  .box b{font-weight:700}
+  table{border-collapse:collapse;width:100%;font-size:14px;margin:8px 0}
+  th,td{border-bottom:1px solid var(--line);padding:7px 6px;text-align:left;vertical-align:top}
+  th{color:var(--muted);font-weight:600;font-size:13px}
+  td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+  .layers{list-style:none;padding:0;counter-reset:l}
+  .layers li{counter-increment:l;padding:6px 10px 6px 40px;position:relative;border-left:3px solid var(--line);margin:0}
+  .layers li::before{content:counter(l);position:absolute;left:10px;top:6px;width:20px;height:20px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-size:12px;display:flex;align-items:center;justify-content:center;font-weight:700}
+  .layers li.target{border-left-color:var(--accent);font-weight:700}
+
+  /* tools */
+  .tool{border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:12px 0;background:#fbfcfd}
+  .tool .tt{font-weight:700;margin-bottom:6px}
+  .check{display:flex;gap:10px;align-items:flex-start;padding:6px 0;cursor:pointer}
+  .check input{margin-top:5px;width:18px;height:18px;accent-color:var(--accent);flex-shrink:0}
+  .result{margin-top:10px;padding:10px 12px;border-radius:8px;font-weight:600;font-size:15px}
+  .result.ok{background:#e7f4ec;color:var(--ok)}
+  .result.bad{background:var(--warn-soft);color:var(--warn)}
+  .result.neutral{background:#eef1f4;color:var(--muted);font-weight:500}
+  .progress{font-size:13px;color:var(--muted);margin-top:6px}
+  .field{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid var(--line)}
+  .field label{font-size:15px}
+  .field input{width:110px;font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:8px;text-align:right}
+  .tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:8px 0}
+  table.wide{min-width:720px;font-size:13px}
+  table.wide td:first-child,table.wide th:first-child{position:sticky;left:0;background:#fff;font-weight:600;white-space:nowrap}
+  .linkcard{display:block;border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:10px 0;text-decoration:none;color:var(--ink);background:#fbfcfd}
+  .linkcard:hover{border-color:var(--accent)}
+  .linkcard .lt{display:block;font-weight:700;color:var(--accent)}
+  .linkcard .ld{display:block;font-size:14px;color:var(--ink);margin-top:2px}
+  .linkcard .lh{display:block;font-size:12.5px;color:var(--muted);margin-top:4px}
+  .refs li{font-size:13.5px;margin:6px 0;color:#38424f}
+  .refs h3{margin-top:18px}
+  footer.note{font-size:12.5px;color:var(--muted);border-top:1px solid var(--line);margin-top:28px;padding-top:12px}
+
+  /* sheet handle (mobile) */
+  .handle{display:none}
+
+  /* ---------- mobile: bottom sheet ---------- */
+  @media (max-width: 899px){
+    .main{grid-template-rows:1fr}
+    .stage{grid-row:1;grid-column:1}
+    .panel{position:absolute;left:0;right:0;bottom:0;height:var(--sheet-h,46%);border-radius:var(--radius) var(--radius) 0 0;box-shadow:0 -6px 24px rgba(0,0,0,.18);transition:height .25s ease;z-index:4}
+    .panel.full{--sheet-h:88%}
+    .panel.mini{--sheet-h:116px}
+    .handle{display:flex;justify-content:center;align-items:center;height:22px;cursor:pointer;flex-shrink:0;border:0;background:none;width:100%;padding:0}
+    .handle span{width:42px;height:5px;border-radius:3px;background:#c8d0d8}
+    .tabs{padding-top:2px}
+  }
+  /* ---------- desktop: side panel ---------- */
+  @media (min-width: 900px){
+    .main{grid-template-columns:1fr minmax(380px,34vw)}
+    .panel{border-left:1px solid var(--line)}
+    .panel.collapsed{display:none}
+    .main.collapsed{grid-template-columns:1fr 0}
+    .tabs{flex-wrap:wrap}
+  }
+  .toggle-panel{margin-left:auto;font:inherit;font-size:13px;border:1px solid var(--line);background:#fff;border-radius:8px;padding:4px 10px;cursor:pointer;display:none}
+  @media (min-width: 900px){ .toggle-panel{display:inline-block} }
+
+  /* ================= 3D 模擬：畫面上的元件 ================= */
+  #viewer{position:absolute;inset:0;overflow:hidden;line-height:1.5}
+  #viewer canvas{display:block;touch-action:none}
+  #viewer.canGrab canvas{cursor:grab} #viewer.dragging canvas{cursor:grabbing}
+  .labels{position:absolute;inset:0;pointer-events:none}
+  .lab{font-size:12px;padding:2px 7px;border-radius:10px;background:rgba(255,255,255,.88);border:1px solid #d5dbe3;white-space:nowrap}
+  .lab-dir{background:#1f2a37;color:#fff;border-color:#1f2a37;font-size:11.5px}
+  .lab-gray{background:#fff;color:#55606e;border-color:#9aa4b1;font-size:11px}
+  .lab-tuff{background:#7b3fc4;color:#fff;border-color:#7b3fc4;font-size:11.5px}
+  .lab-tuff-ghost{background:#fff;color:#7b3fc4;border:1px dashed #7b3fc4;font-size:11px}
+  #loading{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);font-size:14px;text-align:center;padding:0 16px}
+  #pop{position:absolute;left:50%;top:22%;transform:translate(-50%,0) scale(.8);background:#1f2a37;color:#fff;font-weight:700;padding:10px 18px;border-radius:24px;opacity:0;pointer-events:none;z-index:5}
+  #pop.show{animation:pop 1.4s ease-out}
+  @keyframes pop{0%{opacity:0;transform:translate(-50%,0) scale(.7)}15%{opacity:1;transform:translate(-50%,0) scale(1.08)}70%{opacity:1;transform:translate(-50%,0) scale(1)}100%{opacity:0}}
+  #modeSwitch{position:absolute;left:50%;top:12px;transform:translateX(-50%);z-index:4;display:flex;background:rgba(255,255,255,.95);border:1px solid var(--line);border-radius:20px;padding:3px;box-shadow:0 2px 8px rgba(0,0,0,.08)}
+  #modeSwitch button{border:0;background:none;padding:6px 14px;border-radius:16px;font:inherit;font-size:13px;cursor:pointer;color:var(--muted);white-space:nowrap}
+  #modeSwitch button.on{background:var(--ink);color:#fff;font-weight:600}
+  #hud{position:absolute;left:12px;top:12px;z-index:2;background:rgba(255,255,255,.94);border:1px solid var(--line);border-radius:10px;padding:8px 11px;font-size:12.5px;min-width:220px;box-shadow:0 2px 8px rgba(0,0,0,.06);pointer-events:none}
+  .hrow{display:flex;justify-content:space-between;gap:12px;line-height:1.75;font-variant-numeric:tabular-nums}
+  .hrow span{color:var(--muted)}
+  .hrow.ok b{color:#11643a} .hrow.warn b{color:#9a6b00} .hrow.off b{color:#b3261e}
+  .hsep{border-top:1px solid var(--line);margin:4px 0}
+  #depthCtl{position:absolute;right:8px;top:12px;bottom:12px;width:78px;display:flex;flex-direction:column;align-items:center;gap:8px;z-index:3}
+  .dlabel{font-size:12px;background:rgba(255,255,255,.94);border:1px solid var(--line);border-radius:10px;padding:3px 8px;white-space:nowrap}
+  #dTrack{position:relative;flex:1;width:14px;margin-left:22px;background:#dde3ea;border-radius:7px;touch-action:none;cursor:ns-resize}
+  #dTrack::before{content:'';position:absolute;top:-14px;bottom:-14px;left:-26px;right:-26px}
+  #dFill{position:absolute;bottom:0;left:0;right:0;height:0;background:linear-gradient(#7d8894,#c7cdd4);border-radius:7px}
+  #dThumb{position:absolute;left:50%;top:100%;transform:translate(-50%,-50%);width:52px;height:28px;border-radius:14px;background:var(--accent);color:#fff;font-size:13px;font-weight:700;display:grid;place-items:center;box-shadow:0 2px 6px rgba(0,0,0,.25);font-variant-numeric:tabular-nums;pointer-events:none}
+  #dThumb span::after{content:' cm';font-size:10px;font-weight:400}
+  .tick{position:absolute;right:calc(100% + 8px);transform:translateY(-50%);font-size:10px;color:var(--muted);white-space:nowrap;pointer-events:none}
+  .tick::after{content:'';display:inline-block;width:5px;border-top:1px solid #aab3be;margin-left:3px;vertical-align:middle}
+  .dbtn{border:1px solid var(--line);background:#fff;border-radius:10px;padding:5px 10px;font:inherit;font-size:12.5px;cursor:pointer}
+  #status{position:absolute;left:12px;right:96px;bottom:12px;z-index:3;margin:0 auto;max-width:560px;padding:8px 12px;border-radius:10px;font-size:13.5px;line-height:1.5;box-shadow:0 2px 10px rgba(0,0,0,.1);pointer-events:none}
+  .status.info{background:rgba(238,243,251,.97)}
+  .status.good{background:rgba(223,246,232,.97);color:#11643a;font-weight:600}
+  .status.bad{background:rgba(253,232,230,.97);color:#9b2318}
+  @media (max-width: 899px){
+    #modeSwitch{top:8px}
+    #hud{top:50px;left:8px;min-width:0;font-size:11.5px;padding:5px 8px}
+    #depthCtl{top:50px;bottom:8px}
+    #status{left:8px;bottom:8px;font-size:12.5px;padding:6px 10px}
+  }
+
+  /* ================= 3D 模擬：章節面板裡的控制項 ================= */
+  .sim .row{margin:10px 0}
+  .sim .row label{display:flex;justify-content:space-between;font-size:14px;margin-bottom:4px}
+  .sim .row label output{color:var(--accent);font-variant-numeric:tabular-nums}
+  .sim input[type=range]{width:100%;accent-color:var(--accent)}
+  .sim .hint{font-size:12.5px;color:var(--muted);margin-top:3px;line-height:1.6}
+  .sim .gap{font-size:13.5px;background:#f6f8fb;border-radius:8px;padding:7px 10px}
+  .sim .gap.ok{background:#dff6e8} .sim .gap.warn{background:#fff3cd} .sim .gap.off{background:#fde8e6}
+  .sim .btns{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+  .sim .btn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 11px;font:inherit;font-size:13.5px;cursor:pointer}
+  .sim .seg{display:flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+  .sim .seg button{flex:1;border:0;border-right:1px solid var(--line);background:#fff;padding:7px 0;font:inherit;font-size:13.5px;cursor:pointer}
+  .sim .seg button:last-child{border-right:0}
+  .sim .seg button.on{background:var(--accent);color:#fff;font-weight:600}
+  .sim .howto{font-size:14px;line-height:1.7} .sim .howto>div{margin:4px 0}
+  .dot{display:inline-block;width:11px;height:11px;border-radius:50%;vertical-align:-1px}
+  .dot.red{background:#d94b4b} .dot.gray{background:#9aa4b1}
+  .sim .toggles label{display:inline-flex;align-items:center;gap:4px;font-size:14px;margin:3px 12px 3px 0}
+  .sim .legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:13px}
+  .sim .legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+  #layers{font-size:12.5px;line-height:2;margin-top:6px}
+  .chip{display:inline-block;border-left:4px solid var(--c);background:#f6f8fb;padding:0 6px;border-radius:4px}
+  .chip small{color:var(--muted);margin-left:4px}
+  .chip.bone{border-left-color:#e2564b;background:#fde8e6}
+  .arrow{color:#b3bcc8;margin:0 2px}
+  .muted{color:var(--muted)}
+  .simTop{display:flex;justify-content:space-between;align-items:flex-end;gap:10px}
+  body.real #tuffOut, body.real .godOnly{display:none}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Lumbar Puncture 互動教學</h1>
+    <span class="tag">v0.2 草稿</span>
+    <button class="toggle-panel" id="togglePanel" type="button">收起章節</button>
+  </header>
+
+  <div class="main" id="main">
+    <!-- ===== 3D 主畫面 ===== -->
+    <div class="stage">
+      <div id="stage-3d" data-view="overview">
+        <div id="viewer">
+          <div id="loading">載入 3D 模型中…</div>
+          <div id="pop"></div>
+          <div id="modeSwitch" role="tablist">
+            <button data-mode="god" class="on">上帝視角</button>
+            <button data-mode="real">真實視角</button>
+          </div>
+          <div id="hud"></div>
+          <div id="depthCtl">
+            <div class="dlabel">進針深度</div>
+            <div id="dTrack"><div id="dFill"></div><div id="dThumb"><span id="depthVal">0.0</span></div></div>
+            <button class="dbtn" id="withdraw" type="button">退針</button>
+          </div>
+          <div id="status" class="status info"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 章節面板 ===== -->
+    <aside class="panel" id="panel">
+      <button class="handle" id="handle" type="button" aria-label="調整面板高度"><span></span></button>
+      <nav class="tabs" role="tablist" id="tabs"></nav>
+      <div class="content" id="content">
+
+<!-- 0：3D 模擬操作 -->
+<section class="ch sim" id="ch-sim" data-title="3D 模擬操作" data-view="needle">
+  <div class="simTop">
+    <div>
+      <h2>3D 模擬操作</h2>
+      <p class="sub">Interactive LP simulation</p>
+    </div>
+    <div class="btns"><button class="btn" id="reset" type="button">全部重設</button></div>
+  </div>
+  <input id="depth" type="range" min="0" max="8.9" step="0.05" hidden>
+  <div id="layers" class="godOnly"></div>
+
+  <h3>① 病人擺位（左側臥）</h3>
+  <div class="row">
+    <label>屈曲程度 <output id="flexOut"></output></label>
+    <input id="flex" type="range" min="-6" max="16" step="1">
+    <div class="gap" id="gapInfo"></div>
+    <div class="hint">左側臥、抱膝縮下巴（胎兒姿勢）會把棘突之間、椎板之間的空隙撐開。</div>
+  </div>
+  <div class="row">
+    <label>背部傾斜 <output id="rollOut"></output></label>
+    <input id="roll" type="range" min="-20" max="30" step="1">
+    <div class="gap" id="rollInfo"></div>
+    <div class="hint">病人常會不自覺往前倒（上側肩膀、骨盆往前），背部就不再垂直床面。</div>
+  </div>
+  <div class="row">
+    <label>體型</label>
+    <div class="seg">
+      <button type="button" data-body="thin">瘦</button><button type="button" data-body="normal" class="on">一般</button><button type="button" data-body="over">過重</button><button type="button" data-body="obese">肥胖</button>
+    </div>
+    <div class="gap" id="bodyInfo"></div>
+    <div class="hint">皮下脂肪越厚，皮膚到 CSF 的距離越長；肥胖病人用標準 3.5 吋針可能不夠長。過重、肥胖時，真實視角下棘突和 Tuffier's line 會變淡、位置也不一定準（摸不太到）。</div>
+  </div>
+  <div class="row">
+    <label>穿刺針長度</label>
+    <div class="seg">
+      <button type="button" data-needle="std" class="on">3.5 吋（8.9 cm）</button><button type="button" data-needle="long">5 吋（12.7 cm）</button>
+    </div>
+    <div class="hint">標準為 3.5 吋；皮下很厚時改用長針。換針時會自動退針。</div>
+  </div>
+
+  <h3>② 定位：Tuffier's line</h3>
+  <div class="row">
+    <label>摸到的線落在 <output id="tuffOut"></output></label>
+    <input id="tuff" type="range" min="-1" max="2" step="0.1">
+    <div class="gap" id="tuffInfo"></div>
+    <div class="btns"><button class="btn" id="tuffRandom" type="button">隨機（不告訴你）</button></div>
+    <div class="hint">Tuffier's line 是兩側髂嵴最高點的連線，傳統認為在 L4 棘突或 L4–L5 間隙（模擬中以 L4–L5 間隙表示）。實際用手摸常會偏高（多落在 L3–L4），拉動滑桿可以模擬摸不準的情況。往右 = 摸到的線比實際高。</div>
+  </div>
+
+  <h3>③ 入針點與角度：直接在 3D 畫面上拖曳</h3>
+  <div class="howto">
+    <div><span class="dot red"></span> <b>拖曳紅點</b>（針與皮膚接觸點）→ 移動入針位置。靠近中線時會自動吸附到中線。</div>
+    <div><span class="dot gray"></span> <b>拖曳紅點以外的針身</b>（任何位置都可以，包括綠色針座）→ 以入針點為支點改變角度。抓越遠的地方，角度調得越細。</div>
+    <div><b>進針深度</b>：3D 畫面右側的深度桿，往上推 = 往深處進針。</div>
+    <div class="hint">小技巧：從病人背後看最好調入針點與往頭側角度；轉到從頭側往下看最好對齊水平角度。真實操作中，換位置要先退針、改角度要先退到皮下，模擬也會自動幫你退針。</div>
+    <div class="hint">臨床上常說「針尖朝向肚臍」，配合棘突往下斜的方向。病人背部傾斜幾度，針的水平角度就要跟著傾斜幾度。</div>
+  </div>
+
+  <h3>畫面上方的視角切換</h3>
+  <ul>
+    <li><b>上帝視角</b>：看得到所有構造，會告訴你針穿過哪些層、撞到哪塊骨頭、該往哪調。</li>
+    <li><b>真實視角</b>：只看得到皮膚與摸得到的標誌（棘突、Tuffier's line），回饋只有手感：阻力、落空感、碰到骨頭、拔針芯有沒有 CSF。</li>
+  </ul>
+
+  <h3>圖例與顯示</h3>
+  <div class="legend">
+    <span class="godOnly"><i style="background:#e9dfc8"></i>骨頭</span>
+    <span class="godOnly"><i style="background:#f2c12e"></i>黃韌帶</span>
+    <span class="godOnly"><i style="background:#e39a9a"></i>棘間韌帶</span>
+    <span class="godOnly"><i style="background:#c96f6f"></i>棘上韌帶</span>
+    <span class="godOnly"><i style="background:#5b9bff"></i>硬膜囊</span>
+    <span class="godOnly"><i style="background:#fff1b8;border:1px solid #ddd"></i>馬尾</span>
+    <span class="godOnly"><i style="background:#a9c9dc"></i>椎間盤</span>
+    <span class="godOnly"><i style="background:#f3d77e"></i>皮下脂肪</span>
+    <span><i style="background:#8a5a44;border-radius:50%"></i>摸得到的棘突</span>
+    <span><i style="background:#7b3fc4"></i>Tuffier's line</span>
+  </div>
+  <div class="toggles" style="margin-top:8px">
+    <label class="godOnly"><input type="checkbox" id="tCut"> 正中矢狀剖面（切掉朝上的右半邊）</label>
+    <label class="godOnly"><input type="checkbox" id="tSkin" checked> 皮膚與皮下脂肪</label>
+    <label class="godOnly"><input type="checkbox" id="tLig" checked> 棘間／棘上韌帶</label>
+    <label class="godOnly"><input type="checkbox" id="tDura" checked> 硬膜囊與馬尾</label>
+    <label><input type="checkbox" id="tLabels" checked> 方位標示</label>
+    <label class="godOnly"><input type="checkbox" id="tPath" checked> 預計路徑</label>
+  </div>
+
+  <div class="box key" style="font-size:13.5px">
+    操作：拖曳旋轉、滾輪／雙指縮放、右鍵／三指平移。<br>
+    這是<b>簡化的教學示意模型</b>，形狀與比例為近似值，不代表個別病人解剖。成人脊髓多終止於 L1–L2（脊髓圓錐），所以 L3–L5 椎管內是<b>馬尾神經</b>。
+  </div>
+</section>
+
+<!-- 1 -->
+<section class="ch" id="ch-indication" data-title="適應症與禁忌症" data-view="overview">
+  <h2>適應症與禁忌症</h2>
+  <p class="sub">Indications &amp; Contraindications</p>
+
+  <h3>適應症</h3>
+  <ul>
+    <li><b>診斷性</b>
+      <ul>
+        <li>懷疑 CNS 感染：bacterial、viral、TB、cryptococcal meningitis，encephalitis</li>
+        <li>急性劇烈頭痛、CT 陰性，需排除 <span class="en">subarachnoid hemorrhage (SAH)</span></li>
+        <li>神經發炎／免疫疾病：MS、GBS、CIDP、neurosarcoidosis、paraneoplastic syndrome、autoimmune encephalitis</li>
+        <li>惡性疾病：leptomeningeal metastasis、CNS lymphoma</li>
+        <li>顱內壓疾病：<span class="en">idiopathic intracranial hypertension (IIH)</span>、<span class="en">spontaneous intracranial hypotension</span>；NPH tap test</li>
+      </ul>
+    </li>
+    <li><b>治療性</b>：IIH 引流減壓；intrathecal 給藥（化療、抗生素、baclofen）；spinal anesthesia；顯影劑</li>
+  </ul>
+
+  <h3>禁忌症</h3>
+  <ul>
+    <li><b>顱內壓升高、有 herniation 風險</b>：mass effect、腦水腫、obstructive hydrocephalus</li>
+    <li><b>穿刺部位感染</b>：cellulitis、abscess；懷疑 spinal epidural abscess</li>
+    <li><b>出血風險</b>：嚴重血小板低下、凝血異常、使用抗凝血／抗血小板藥物</li>
+    <li><b>結構異常</b>：Chiari malformation、脊椎畸形、myelomeningocele；腰椎手術史（相對）</li>
+  </ul>
+
+  <div class="tool" id="ctTool">
+    <div class="tt">LP 前要先做 CT 嗎？</div>
+    <div style="font-size:14px;color:var(--muted);margin-bottom:4px">有以下任何一項，建議先做腦部影像：</div>
+    <label class="check"><input type="checkbox"> 意識改變</label>
+    <label class="check"><input type="checkbox"> 局部神經學缺損 <span class="en">(focal deficit)</span></label>
+    <label class="check"><input type="checkbox"> 免疫不全</label>
+    <label class="check"><input type="checkbox"> 新發生的 seizure（一週內）</label>
+    <label class="check"><input type="checkbox"> CNS 疾病史（腫塊、中風、局部感染）</label>
+    <label class="check"><input type="checkbox"> Papilledema</label>
+    <div class="result neutral" id="ctResult">勾選病人符合的項目</div>
+  </div>
+  <div class="box warn"><b>懷疑細菌性腦膜炎時</b>：不要因為等 CT 或 LP 而延誤抗生素。先抽血液培養、給抗生素，再安排影像與 LP。</div>
+  <div class="box key">不需要每位病人都先做 CT；依臨床檢查判斷。影像正常可排除 mass lesion，但不代表顱內壓一定正常。</div>
+
+  <h3>出血風險</h3>
+  <ul>
+    <li>血小板 ≥ 50 × 10⁹/L、INR &lt; 1.5 時，LP 一般可安全進行</li>
+    <li>Aspirin 單獨使用不會明顯增加 spinal hematoma 風險</li>
+    <li>Warfarin：術前停藥，確認 INR 恢復</li>
+    <li>Heparin：治療劑量 LMWH 術前停 24 小時；預防劑量 12 小時內避免</li>
+  </ul>
+  <div class="box todo"><b>待補：</b>抗凝血／抗血小板藥物停藥與恢復時間查詢表（DOAC、clopidogrel、ticagrelor 等），將依 ASRA 最新版指引或院內規範填入。</div>
+</section>
+
+<!-- 2 -->
+<section class="ch" id="ch-anatomy" data-title="解剖" data-view="anatomy">
+  <h2>解剖</h2>
+  <p class="sub">Anatomy</p>
+
+  <h3>穿刺針經過的層次</h3>
+  <ol class="layers">
+    <li>皮膚 <span class="en">skin</span></li>
+    <li>皮下組織 <span class="en">subcutaneous tissue</span></li>
+    <li>棘上韌帶 <span class="en">supraspinous ligament</span></li>
+    <li>棘間韌帶 <span class="en">interspinous ligament</span></li>
+    <li>黃韌帶 <span class="en">ligamentum flavum</span>：阻力最大，穿過時有「落空感」</li>
+    <li>硬膜外腔 <span class="en">epidural space</span>：含靜脈叢，是 traumatic tap 的來源</li>
+    <li>硬腦膜 <span class="en">dura mater</span></li>
+    <li>蜘蛛膜 <span class="en">arachnoid mater</span></li>
+    <li class="target">蜘蛛膜下腔 <span class="en">subarachnoid space</span>：CSF、cauda equina</li>
+  </ol>
+  <div class="box key">皮膚到硬膜外腔約 <b>45–55 mm</b>（非肥胖成人），硬膜可能再深數 mm。</div>
+
+  <h3>為什麼選 L3–4 或 L4–5</h3>
+  <p>成人脊髓末端 <span class="en">conus medullaris</span> 約終止於 T12 到 L3 之間，因人而異。選 L3–4 或 L4–5 可以避開脊髓，針只會碰到漂浮在 CSF 中的 cauda equina。</p>
+
+  <h3>Tuffier's line 的真相</h3>
+  <ul>
+    <li>傳統教法：兩側髂嵴最高點連線 = L4 棘突或 L4–5 間隙。這是<b>影像上</b>的位置。</li>
+    <li>影像上的髂嵴連線，約 <b>87%</b> 確實落在 L4 或 L4–5。</li>
+    <li>但<b>徒手摸到</b>的連線約 <b>77%</b> 落在 <b>L3 或 L3–4</b>，女性（86%）比男性（62%）更常偏高，BMI 越高也越容易偏高。</li>
+    <li>摸到的線和影像上的線幾乎不一致，兩者應視為不同的東西。</li>
+    <li>平均偏高約一個節段（女性偏移更多）。</li>
+    <li>徒手判定「確切是哪一節」的正確率大約只有 <b>3 成</b>，錯的時候多半是實際位置比以為的高一節。</li>
+  </ul>
+  <div class="box warn">把摸到的線當成 L4–5 往上找一節，可能已經在 L2–3。肥胖、女性、標誌不清時特別容易高估。有超音波時，穿刺前先確認層級。</div>
+</section>
+
+<!-- 3 -->
+<section class="ch" id="ch-prep" data-title="準備及備物" data-view="overview">
+  <h2>準備及備物</h2>
+  <p class="sub">Preparation &amp; Equipment</p>
+
+  <div class="tool" id="prepTool">
+    <div class="tt">術前 checklist</div>
+    <label class="check"><input type="checkbox"> 確認適應症、排除禁忌症（影像、血小板、INR、抗凝血藥）</label>
+    <label class="check"><input type="checkbox"> 取得同意書：說明 PLPH、背痛、出血、感染、穿刺失敗等風險</label>
+    <label class="check"><input type="checkbox"> <b>先確認要送哪些檢查</b>，備齊檢體管並編號</label>
+    <label class="check"><input type="checkbox"> 同時抽血（血糖等需配對的項目）</label>
+    <label class="check"><input type="checkbox"> 局部麻醉：1% lidocaine、注射針</label>
+    <label class="check"><input type="checkbox"> 腰椎穿刺針：首選 atraumatic（pencil-point），附 introducer</label>
+    <label class="check"><input type="checkbox"> Manometer＋三向閥：<b>事先組好</b>，先轉鬆較緊的三向閥</label>
+    <label class="check"><input type="checkbox"> 無菌用物：口罩、無菌手套、洞巾、chlorhexidine-alcohol 或 povidone-iodine</label>
+    <label class="check"><input type="checkbox"> 紗布、小敷料</label>
+    <label class="check"><input type="checkbox"> 有條件時：超音波</label>
+    <div class="progress" id="prepProgress">0 / 10 完成</div>
+  </div>
+
+  <h3>術中要記錄</h3>
+  <ul>
+    <li>穿刺節段、局部麻醉藥、針的種類與大小</li>
+    <li>開放壓、CSF 外觀、收集的管數</li>
+    <li>嘗試次數、併發症</li>
+  </ul>
+</section>
+
+<!-- 4 -->
+<section class="ch" id="ch-position" data-title="擺位" data-view="position">
+  <h2>擺位</h2>
+  <p class="sub">Positioning</p>
+
+  <table>
+    <tr><th></th><th>側臥 <span class="en">lateral decubitus</span></th><th>坐姿 <span class="en">sitting</span></th></tr>
+    <tr><td>開放壓</td><td>可準確測量</td><td>無法準確測量</td></tr>
+    <tr><td>棘突間距</td><td>屈曲良好時足夠</td><td>腳有支撐時最大</td></tr>
+    <tr><td>適合</td><td>需要測壓、急性頭痛、多數診斷性 LP</td><td>不需測壓、肥胖、側臥找不到中線</td></tr>
+  </table>
+
+  <h3>側臥擺位重點</h3>
+  <ul>
+    <li>背部貼近床緣，脊柱與床面平行</li>
+    <li>膝蓋屈向胸口、頭頸前屈，像「蝦子」</li>
+    <li>肩膀與骨盆都要<b>垂直床面</b>，不可往前或往後傾，否則針容易偏離中線</li>
+    <li>頭與穿刺點同高；頭抬高會讓開放壓假性升高</li>
+  </ul>
+  <div class="box key">急性頭痛的病人盡量用側臥：開放壓升高可能是 cerebral venous sinus thrombosis 或 IIH 唯一的線索。</div>
+</section>
+
+<!-- 5 -->
+<section class="ch" id="ch-needle" data-title="定位及入針" data-view="needle">
+  <h2>定位及入針角度</h2>
+  <p class="sub">Landmarks &amp; Needle Insertion</p>
+
+  <h3>定位</h3>
+  <ol>
+    <li>摸兩側髂嵴最高點，畫出連線（多半落在 L3–4 附近）</li>
+    <li>沿中線找棘突間隙，標記 L3–4 或 L4–5</li>
+    <li>有超音波時：先在橫切面標出中線、縱切面標出棘突間隙，兩線交點即進針點；並量出皮膚到黃韌帶的深度</li>
+  </ol>
+
+  <h3>超音波 vs 徒手觸診</h3>
+  <table>
+    <tr><th></th><th>判對椎間層級</th></tr>
+    <tr><td>徒手觸診</td><td class="num">約 30%</td></tr>
+    <tr><td>超音波</td><td class="num">最高約 71%</td></tr>
+  </table>
+  <ul>
+    <li>以 X 光驗證，超音波辨識層級明顯比觸診準確</li>
+    <li>超音波從薦椎開始往頭側依序數間隙，比從髂嵴往上推算可靠</li>
+    <li>有設備且受過訓練時，建議穿刺前用超音波選位並標記，尤其是肥胖或骨性標誌摸不清楚的病人</li>
+    <li>標記後病人要維持同一姿勢再穿刺，避免皮膚標記位移</li>
+  </ul>
+
+  <h3>針的選擇</h3>
+  <ul>
+    <li><b>首選 atraumatic（pencil-point）針</b>：PLPH 減少一半以上，成功率與 traumatic tap 不變</li>
+    <li>Atraumatic 針無法穿皮，先用 introducer 穿過皮膚</li>
+    <li>針越細，頭痛越少；選自己能有把握一次成功的最細針</li>
+    <li><b>若使用 Quincke（切割型）針</b>：bevel 要與脊柱長軸<b>平行</b>
+      <ul>
+        <li>側臥：bevel 朝天花板或地板</li>
+        <li>坐姿：bevel 朝病人左側或右側</li>
+      </ul>
+    </li>
+  </ul>
+
+  <h3>入針步驟</h3>
+  <ol>
+    <li>消毒、鋪洞巾；1% lidocaine 打皮丘，再往深部浸潤</li>
+    <li>針<b>帶著 stylet</b> 從中線進入，略朝頭側，大約對準肚臍方向</li>
+    <li>穿過黃韌帶時會有「落空感」，非肥胖成人約在針長 2/3 處</li>
+    <li>拔出 stylet，等約 5 秒看 CSF 是否流出</li>
+    <li>沒有 CSF：放回 stylet，再前進 1–3 mm 後檢查；或旋轉針 90°</li>
+  </ol>
+
+  <h3>疑難排解</h3>
+  <ul>
+    <li><b>碰到骨頭</b>：退到皮下（不要拔出皮膚），調整方向再進</li>
+    <li>移動針之前，先放回 stylet</li>
+    <li><b>不要用針筒抽 CSF</b>：CSF 流不出來時可能是低壓或黏稠（如 TB、惡性腦膜炎）</li>
+    <li>反覆失敗：換節段、重新擺位、改坐姿、換有經驗的人，或改用超音波／透視</li>
+  </ul>
+  <div class="box key"><b>拔針前一定放回 stylet</b>，可以明顯降低 PLPH。</div>
+</section>
+
+<!-- 7 -->
+<section class="ch" id="ch-pressure" data-title="開放壓與檢體" data-view="needle">
+  <h2>開放壓與檢體收集</h2>
+  <p class="sub">Opening Pressure &amp; CSF Collection</p>
+
+  <h3>開放壓</h3>
+  <ol>
+    <li>看到 CSF 後立刻接上 manometer</li>
+    <li>等液面穩定，約 1 分鐘；液面會隨呼吸上下起伏</li>
+    <li>讀<b>半月面最低點</b></li>
+  </ol>
+  <ul>
+    <li>正常範圍約 60–200 mm CSF；過重者可到 250 而無症狀</li>
+    <li>假性升高：病人緊張、頭位置不對、雙腿過度屈向腹部 → 量測時可讓病人稍微伸直腿、放鬆</li>
+    <li>坐姿無法準確測壓</li>
+  </ul>
+
+  <h3>檢體收集</h3>
+  <ul>
+    <li>讓 CSF 自然滴出，<b>不要抽</b></li>
+    <li>依事先準備的編號管依序收集</li>
+    <li>收集約 10 mL 一般是安全的；檢體量不足反而是常見問題</li>
+    <li>Cytology 需要較多量（至少 5 mL），並盡快送檢</li>
+    <li>需配對血液的項目：glucose、oligoclonal bands 等，同時抽血</li>
+    <li>Xanthochromia：避光、盡快送；人工送，不要用氣送管（可能造成溶血）</li>
+  </ul>
+  <div class="box todo"><b>待補：</b>各檢查項目的管數、每管 mL 數與順序，將改為院內做法。</div>
+</section>
+
+<!-- 8 -->
+<section class="ch" id="ch-complication" data-title="併發症" data-view="complication">
+  <h2>併發症</h2>
+  <p class="sub">Complications</p>
+
+  <h3>Post-LP headache（PLPH）— 最常見</h3>
+  <ul>
+    <li><b>表現</b>：姿勢性頭痛，坐起或站立時加重、躺平緩解；可伴噁心、頸部僵硬、耳鳴、聽力改變、畏光；牽拉 CN VI 可造成複視</li>
+    <li><b>時程</b>：多在 24–48 小時內出現，通常 1–2 週內自行緩解</li>
+    <li><b>危險因子</b>：年輕、女性、原本有頭痛病史；<b>抽取的 CSF 量不是危險因子</b></li>
+  </ul>
+  <table>
+    <tr><th>有效的預防</th><th>無效的做法</th></tr>
+    <tr><td>Atraumatic 針<br>較細的針<br>拔針前放回 stylet<br>Quincke 針 bevel 平行</td><td>術後臥床<br>額外補充輸液<br>預防性 epidural blood patch</td></tr>
+  </table>
+  <ul>
+    <li><b>治療</b>：躺平休息、補充水分、止痛（acetaminophen、NSAIDs）、止吐；caffeine 有部分證據</li>
+    <li>保守治療無效或症狀嚴重：<b>epidural blood patch</b></li>
+  </ul>
+
+  <h3>Traumatic tap</h3>
+  <ul>
+    <li>針穿過硬膜外靜脈叢，血液混入 CSF；發生率約 10–16%</li>
+    <li>危險因子：血小板低、INR 高、經驗不足、較粗的切割型針、肥胖</li>
+    <li>判讀方式見「CSF 判讀」</li>
+  </ul>
+
+  <h3>Spinal hematoma — 少見但嚴重</h3>
+  <div class="box warn"><b>紅旗徵象</b>：嚴重或持續背痛、放射痛、新的感覺異常或無力、大小便功能障礙 → 立即安排 MRI，可能造成永久下肢癱瘓。</div>
+
+  <h3>其他</h3>
+  <ul>
+    <li><b>Herniation</b>：單側 mass lesion 風險最高；意識清楚、無 focal sign、無免疫不全者不先做影像通常是安全的</li>
+    <li><b>感染</b>：iatrogenic meningitis 罕見；嚴格無菌技術、避開感染部位</li>
+    <li><b>神經根刺激</b>：進針時下肢觸電感，通常短暫；應退針調整方向</li>
+    <li><b>背痛</b>：常見，可持續數天到數週</li>
+    <li>罕見：subdural hemorrhage、cortical vein thrombosis、RCVS；頭痛性質改變時需影像檢查</li>
+  </ul>
+</section>
+
+<!-- 9 -->
+<section class="ch" id="ch-csf" data-title="CSF 判讀" data-view="overview">
+  <h2>CSF 判讀</h2>
+  <p class="sub">CSF Analysis — Bacterial Meningitis</p>
+
+  <h3>細菌性腦膜炎的概似比</h3>
+  <table>
+    <tr><th>指標</th><th>LR+</th><th>LR−</th></tr>
+    <tr><td>CSF／血糖比 ≤ 0.4</td><td class="num">18</td><td class="num">0.31</td></tr>
+    <tr><td>CSF WBC ≥ 500/μL</td><td class="num">15</td><td class="num">0.30</td></tr>
+    <tr><td>CSF lactate ≥ 3.5 mmol/L</td><td class="num">21</td><td class="num">0.12</td></tr>
+  </table>
+  <ul>
+    <li>Gram stain 敏感度約 56–86%：陰性不能排除</li>
+    <li>任一指標達標都大幅提高可能性；lactate 正常最能降低可能性</li>
+  </ul>
+
+  <h3>各類腦膜炎的 CSF 表現</h3>
+  <div class="tablewrap">
+  <table class="wide">
+    <tr><th>CSF</th><th>Bacterial</th><th>Tuberculosis</th><th>Viral</th><th>Fungal</th><th>Aseptic</th></tr>
+    <tr><td>壓力</td><td>Increased</td><td>Increased</td><td>Normal to elevated</td><td>Normal to mild increase</td><td>Increased</td></tr>
+    <tr><td>外觀</td><td>Turbid</td><td>Turbid</td><td>Clear</td><td>Clear</td><td>Clear to turbid</td></tr>
+    <tr><td>Glucose</td><td>&lt; 40 mg/dL</td><td>Low</td><td>Normal to mildly low</td><td>Low to normal</td><td>Low</td></tr>
+    <tr><td>Protein</td><td>Elevated</td><td>Greatly elevated</td><td>Normal to mild elevation</td><td>Normal to mild increase</td><td>Elevated</td></tr>
+    <tr><td>Lactate</td><td>Elevated (&gt; 6 mmol/L)</td><td>Elevated</td><td>0–6 mmol/L</td><td>Normal</td><td>Normal</td></tr>
+    <tr><td>RBC</td><td>Elevated</td><td>Elevated</td><td>Normal</td><td>Normal</td><td>Elevated</td></tr>
+    <tr><td>WBC</td><td>10–2000/mm³</td><td>Elevated, but &lt; 500</td><td>&gt; 100/mm³</td><td>10–50/mm³</td><td>Mildly elevated</td></tr>
+    <tr><td>WBC 種類</td><td>Neutrophils</td><td>Lymphocytes</td><td>Lymphocytes</td><td>Lymphocytes</td><td>Neutrophils</td></tr>
+    <tr><td>Gram stain</td><td>Positive</td><td>Acid-fast bacilli</td><td>Negative</td><td>Negative; India ink for spores/fungi</td><td>Negative</td></tr>
+    <tr><td>Culture</td><td>Positive</td><td>Positive (yield is high in early stages)</td><td>Negative</td><td>Positive</td><td>Negative</td></tr>
+  </table>
+  </div>
+  <p style="font-size:12.5px;color:var(--muted)">Modified from Hrishi AP, Sethuraman M. <i>Indian J Crit Care Med</i> 2019 (CC BY-NC 4.0). 典型表現，個別病人可能不符合。</p>
+
+  <h3>Traumatic tap 的判讀</h3>
+  <ul>
+    <li>血液混入 CSF 會讓 WBC 和 protein 假性升高，需要校正</li>
+    <li>粗估：約每 1,000 RBC 對應 1 WBC</li>
+    <li>CSF RBC &lt; 2,000/mm³ 且無 xanthochromia，可排除 SAH</li>
+    <li>Traumatic tap 的結果不宜單獨作臨床決策，必要時數天內重做 LP</li>
+  </ul>
+
+  <h3>校正計算機</h3>
+  <a class="linkcard" href="https://impact.chp.gov.hk/calculator_13_1.php" target="_blank" rel="noopener">
+    <span class="lt">Traumatic tap 校正 CSF WBC</span>
+    <span class="ld">輸入 CSF 與血液的 WBC、RBC，算出校正後 CSF WBC</span>
+    <span class="lh">impact.chp.gov.hk ↗</span>
+  </a>
+  <a class="linkcard" href="https://www.merckmanuals.com/professional/multimedia/clinical-calculator/csf-protein-concentration-correction-in-blood-contaminated-csf" target="_blank" rel="noopener">
+    <span class="lt">血液污染 CSF 的 protein 校正</span>
+    <span class="ld">校正血液混入後的 CSF protein 濃度</span>
+    <span class="lh">merckmanuals.com ↗</span>
+  </a>
+</section>
+
+<!-- 10 -->
+<section class="ch refs" id="ch-refs" data-title="References" data-view="overview">
+  <h2>References</h2>
+  <ol>
+    <li>Straus SE, Thorpe KE, Holroyd-Leduc J. How do I perform a lumbar puncture and analyze the results to diagnose bacterial meningitis? <i>JAMA</i>. 2006;296(16):2012–2022.</li>
+    <li>Nath S, Koziarz A, Badhiwala JH, et al. Atraumatic versus conventional lumbar puncture needles: a systematic review and meta-analysis. <i>Lancet</i>. 2018;391(10126):1197–1204.</li>
+    <li>Doherty CM, Forbes RB. Diagnostic lumbar puncture. <i>Ulster Med J</i>. 2014;83(2):93–102.</li>
+    <li>Kim KT. Lumbar puncture: considerations, procedure, and complications. <i>Encephalitis</i>. 2022;2(4):93–97.</li>
+    <li>Strupp M, Brandt T, Müller A. Incidence of post-lumbar puncture syndrome reduced by reinserting the stylet: a randomized prospective study of 600 patients. <i>J Neurol</i>. 1998;245(9):589–592.</li>
+    <li>Richman JM, et al. Bevel direction and postdural puncture headache: a meta-analysis. <i>Neurologist</i>. 2006;12(4):224–228.</li>
+    <li>Flaatten H, Thorsen T, Askeland B, et al. Puncture technique and postural postdural puncture headache. A randomised, double-blind study comparing transverse and parallel puncture. <i>Acta Anaesthesiol Scand</i>. 1998;42(10):1209–1214.</li>
+    <li>Bıçak M, Salık F, Akelma H. Is there an effect on the development of postdural puncture headache of dural puncture made with the spinal needle in three different orientations during spinal anaesthesia applied to pregnant patients? <i>J Pain Res</i>. 2019;12:3167–3174.</li>
+    <li>Salık F, Kılıç ET, Akelma H, Güzel A. The effects of the Quincke spinal needle bevel insertion on postdural puncture headache and hemodynamics in obstetric patients. <i>Anesth Essays Res</i>. 2018;12(3):705–710.</li>
+    <li>Chakraverty R, Pynsent P, Isaacs K. Which spinal levels are identified by palpation of the iliac crests and the posterior superior iliac spines? <i>J Anat</i>. 2007;210(2):232–236.</li>
+    <li>Broadbent CR, Maxwell WB, Ferrie R, et al. Ability of anaesthetists to identify a marked lumbar interspace. <i>Anaesthesia</i>. 2000;55(11):1122–1126.</li>
+    <li>Furness G, Reilly MP, Kuchi S. An evaluation of ultrasound imaging for identification of lumbar intervertebral level. <i>Anaesthesia</i>. 2002;57(3):277–280.</li>
+    <li>Cooperstein R, Truong F. Systematic review and meta-analyses of the difference between the spinal level of the palpated and imaged iliac crests. <i>J Can Chiropr Assoc</i>. 2017;61(2):106–120.</li>
+    <li>Efficacy of ultrasound guidance for lumbar punctures: a systematic review and meta-analysis of randomised controlled trials. <i>Postgrad Med J</i>. 2021;97(1143):40–47.</li>
+    <li>Society of Hospital Medicine. Recommendations on the use of ultrasound guidance for adult lumbar puncture: a position statement of the Society of Hospital Medicine. <i>J Hosp Med</i>. 2019;14(10):591–601.</li>
+    <li>Hrishi AP, Sethuraman M. Cerebrospinal fluid (CSF) analysis and interpretation in neurocritical care for acute neurological conditions. <i>Indian J Crit Care Med</i>. 2019;23(Suppl 2):S115–S119.</li>
+  </ol>
+  <footer class="note">本網站為醫師同儕教學用途，不能取代臨床判斷、院內規範與指導醫師的監督。版本 v0.2（2026-11-20 草稿）。</footer>
+</section>
+
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script>
+(function(){
+  const sections = [...document.querySelectorAll('section.ch')];
+  const tabsEl = document.getElementById('tabs');
+  const panel = document.getElementById('panel');
+  const main = document.getElementById('main');
+  const stageEl = document.getElementById('stage-3d');
+
+  sections.forEach((s,i)=>{
+    const b = document.createElement('button');
+    b.className='tab'; b.type='button'; b.setAttribute('role','tab');
+    b.dataset.target=s.id;
+    b.innerHTML = '<span class="n">'+(i+1)+'</span>'+s.dataset.title;
+    b.addEventListener('click',()=>open(s.id,true));
+    tabsEl.appendChild(b);
+  });
+
+  function open(id, fromClick){
+    sections.forEach(s=>s.classList.toggle('active', s.id===id));
+    tabsEl.querySelectorAll('.tab').forEach(t=>t.setAttribute('aria-selected', t.dataset.target===id));
+    const sec = document.getElementById(id);
+    document.getElementById('content').scrollTop = 0;
+    // 通知 3D 模型目前的章節（之後可用來連動視角）
+    const view = sec.dataset.view || 'overview';
+    stageEl.dataset.view = view;
+    window.dispatchEvent(new CustomEvent('lp:chapter', {detail:{chapter:id, view}}));
+    if (fromClick && panel.classList.contains('mini')) panel.classList.remove('mini');
+    const tab = tabsEl.querySelector('[data-target="'+id+'"]');
+    if (tab) tab.scrollIntoView({inline:'center', block:'nearest'});
+    try{ localStorage.setItem('lp-last-chapter', id); }catch(e){}
+  }
+
+  // 手機：3D 畫面只佔面板以上的空間，避免被面板蓋住
+  const mq = window.matchMedia('(max-width: 899px)');
+  function syncSheet(){
+    main.style.setProperty('--sheet', mq.matches ? panel.offsetHeight + 'px' : '0px');
+  }
+  new ResizeObserver(syncSheet).observe(panel);
+  window.addEventListener('resize', syncSheet);
+  syncSheet();
+
+  // mobile sheet: 點把手循環 一般 → 展開 → 收起
+  document.getElementById('handle').addEventListener('click',()=>{
+    if (panel.classList.contains('full')) { panel.classList.remove('full'); panel.classList.add('mini'); }
+    else if (panel.classList.contains('mini')) { panel.classList.remove('mini'); }
+    else { panel.classList.add('full'); }
+  });
+  // 簡易上下滑動
+  let y0=null;
+  const h = document.getElementById('handle');
+  h.addEventListener('touchstart',e=>{y0=e.touches[0].clientY},{passive:true});
+  h.addEventListener('touchend',e=>{
+    if(y0===null) return; const dy=e.changedTouches[0].clientY-y0; y0=null;
+    if (dy < -30){ if(panel.classList.contains('mini')) panel.classList.remove('mini'); else panel.classList.add('full'); }
+    else if (dy > 30){ if(panel.classList.contains('full')) panel.classList.remove('full'); else panel.classList.add('mini'); }
+  });
+
+  // desktop: 收起/展開側邊面板
+  document.getElementById('togglePanel').addEventListener('click',e=>{
+    const c = panel.classList.toggle('collapsed'); main.classList.toggle('collapsed', c);
+    e.target.textContent = c ? '展開章節' : '收起章節';
+  });
+
+  // CT 勾選工具
+  const ct = document.getElementById('ctTool'), ctR = document.getElementById('ctResult');
+  ct.addEventListener('change',()=>{
+    const n = ct.querySelectorAll('input:checked').length;
+    if (n===0){ ctR.className='result ok'; ctR.textContent='未勾選任何項目：通常可直接 LP，不需先做 CT'; }
+    else { ctR.className='result bad'; ctR.textContent='符合 '+n+' 項：建議先做腦部影像再 LP'; }
+  });
+
+  // 備物 checklist
+  const prep = document.getElementById('prepTool'), pp = document.getElementById('prepProgress');
+  prep.addEventListener('change',()=>{
+    const all = prep.querySelectorAll('input').length, done = prep.querySelectorAll('input:checked').length;
+    pp.textContent = done+' / '+all+' 完成' + (done===all ? '　✓ 準備就緒' : '');
+  });
+
+  let start = sections[0].id;
+  try{ const s = localStorage.getItem('lp-last-chapter'); if (s && document.getElementById(s)) start = s; }catch(e){}
+  open(start,false);
+})();
+</script>
+<script>
+  // 3D 載入失敗時顯示提示（成功載入後 #loading 會被移除，之後的錯誤不影響）
+  function lpLoadFail(){
+    var l = document.getElementById('loading');
+    if (l) l.innerHTML = '3D 模型載入失敗，請重新整理頁面。<br>章節內容仍可正常閱讀。';
+  }
+  window.addEventListener('error', lpLoadFail);
+  window.addEventListener('unhandledrejection', lpLoadFail);
+</script>
+<script type="module" src="js/main.js" onerror="lpLoadFail()"></script>
+</body>
+</html>
